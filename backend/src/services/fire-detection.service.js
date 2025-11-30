@@ -1,30 +1,40 @@
 export class FireDetectionService {
 
     processSensorData(normalizedData) {
-        const { temperature, flameDetected } = normalizedData;
+        const { temperature, humidity, flameDetected, rawSystemStatus } = normalizedData;
 
-        console.log(`🔍 Processing sensor data - Temp: ${temperature}°C, Flame: ${flameDetected}`);
+        console.log(`🔍 Processing sensor data - Temp: ${temperature}°C, Humidity: ${humidity}%, Flame: ${flameDetected}, System Status: ${rawSystemStatus}`);
 
-        // Logic từ code Arduino được chuyển sang JavaScript
-        const warningCondition = (temperature >= 50 && temperature < 70) || flameDetected;
-        const dangerCondition = temperature >= 70 && flameDetected;
-
+        // Sử dụng trực tiếp system_status từ ESP8266 (rawData)
         let systemStatus = 'normal';
         let alertLevel = 0;
 
-        if (dangerCondition) {
-            systemStatus = 'danger';
-            alertLevel = 2;
-            console.log('🚨 DANGER Condition detected!');
-        } else if (warningCondition) {
-            systemStatus = 'warning';
-            alertLevel = 1;
-            console.log('⚠️ WARNING Condition detected!');
+        // Sử dụng system_status từ rawData nếu có
+        if (rawSystemStatus && ['normal', 'warning', 'danger'].includes(rawSystemStatus)) {
+            systemStatus = rawSystemStatus;
+            console.log(`✅ Using system_status from ESP8266: ${systemStatus}`);
         } else {
-            console.log('✅ NORMAL Condition');
+            // Fallback: Tính toán system_status nếu rawData không có
+            console.log(`⚠️ No valid system_status from ESP8266, calculating locally`);
+            systemStatus = this.calculateSystemStatus(temperature, flameDetected);
         }
 
-        // Xác định trạng thái thiết bị
+        // Map system_status to alertLevel
+        switch (systemStatus) {
+            case 'danger':
+                alertLevel = 2;
+                console.log('🚨 DANGER Condition detected!');
+                break;
+            case 'warning':
+                alertLevel = 1;
+                console.log('⚠️ WARNING Condition detected!');
+                break;
+            default:
+                alertLevel = 0;
+                console.log('✅ NORMAL Condition');
+        }
+
+        // Xác định trạng thái thiết bị dựa trên system_status
         const deviceStatus = this.calculateDeviceStatus(systemStatus, alertLevel);
 
         const processedData = {
@@ -32,8 +42,6 @@ export class FireDetectionService {
             systemStatus,
             alertLevel,
             deviceStatus,
-            warningCondition,
-            dangerCondition,
             processedAt: new Date().toISOString()
         };
 
@@ -41,8 +49,22 @@ export class FireDetectionService {
         return processedData;
     }
 
+    // Fallback method - chỉ dùng khi ESP8266 không gửi system_status
+    calculateSystemStatus(temperature, flameDetected) {
+        const warningCondition = (temperature >= 50 && temperature < 70) || flameDetected;
+        const dangerCondition = temperature >= 70 && flameDetected;
+
+        if (dangerCondition) {
+            return 'danger';
+        } else if (warningCondition) {
+            return 'warning';
+        } else {
+            return 'normal';
+        }
+    }
+
     calculateDeviceStatus(systemStatus, alertLevel) {
-        // Logic điều khiển thiết bị dựa trên code Arduino
+        // Logic điều khiển thiết bị dựa trên system_status từ ESP8266
         let deviceStatus;
 
         switch (systemStatus) {

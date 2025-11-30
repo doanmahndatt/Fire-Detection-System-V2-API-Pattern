@@ -9,7 +9,7 @@ export class TranslationService {
             temperature: this.validateTemperature(rawData.temperature),
             humidity: this.validateHumidity(rawData.humidity),
             flameDetected: this.normalizeFlameData(rawData.flame_detected),
-            rawSystemStatus: rawData.system_status,
+            rawSystemStatus: rawData.system_status, // Giữ nguyên system_status từ ESP8266
             rawData: rawData // Giữ nguyên dữ liệu gốc để debug
         };
 

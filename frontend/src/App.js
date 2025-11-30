@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Notification from './components/Notification.js';
 import { ALERT_MESSAGES, getAlertMessage } from './config/alerts.js';
@@ -14,11 +14,27 @@ function App() {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [notification, setNotification] = useState(null);
     const [connectionStatus, setConnectionStatus] = useState('connecting');
+    const [lastSystemStatus, setLastSystemStatus] = useState('normal');
 
-    // Hiển thị thông báo
-    const showNotification = (message, type = 'info') => {
-        setNotification({ message, type });
-    };
+    // Hiển thị thông báo - CHỈ cho user actions và errors
+    const showNotification = useCallback((message, type = 'info', title = '', duration = null) => {
+        console.log('📢 Showing notification:', { message, type, title, duration });
+
+        const alertConfig = ALERT_MESSAGES[type] || {};
+        setNotification({
+            message,
+            type,
+            title,
+            duration: duration || alertConfig.duration || 3000,
+            key: Date.now() // Unique key để force re-render
+        });
+    }, []);
+
+    // Close notification
+    const closeNotification = useCallback(() => {
+        console.log('🗑️ Closing notification');
+        setNotification(null);
+    }, []);
 
     // Cập nhật thời gian mỗi giây
     useEffect(() => {
@@ -37,7 +53,13 @@ function App() {
         } catch (error) {
             console.error('Error fetching sensor data:', error);
             setConnectionStatus('disconnected');
-            showNotification(ALERT_MESSAGES.CONNECTION_ERROR.message, ALERT_MESSAGES.CONNECTION_ERROR.type);
+            // CHỈ alert khi mất kết nối
+            showNotification(
+                ALERT_MESSAGES.CONNECTION_ERROR.message,
+                ALERT_MESSAGES.CONNECTION_ERROR.type,
+                '',
+                ALERT_MESSAGES.CONNECTION_ERROR.duration
+            );
         }
     };
 
@@ -65,15 +87,24 @@ function App() {
         return () => clearInterval(interval);
     }, []);
 
-    // Hiển thị cảnh báo khi trạng thái thay đổi
+    // Theo dõi thay đổi trạng thái hệ thống - CHỈ alert khi có CẢNH BÁO hoặc NGUY HIỂM
     useEffect(() => {
         if (sensorData && sensorData.system_status) {
-            const alert = getAlertMessage(sensorData.system_status, sensorData.flameDetected);
-            showNotification(alert.message, alert.type);
-        }
-    }, [sensorData?.system_status, sensorData?.flameDetected]);
+            const currentStatus = sensorData.system_status;
 
-    // Điều khiển thiết bị
+            // CHỈ hiển thị alert khi chuyển sang trạng thái CẢNH BÁO hoặc NGUY HIỂM
+            if ((currentStatus === 'warning' || currentStatus === 'danger') && lastSystemStatus !== currentStatus) {
+                console.log('🚨 System status changed to alert state:', currentStatus);
+                const alert = getAlertMessage(currentStatus, sensorData.flameDetected);
+                showNotification(alert.message, alert.type, alert.title, alert.duration);
+            }
+
+            // Cập nhật lastSystemStatus
+            setLastSystemStatus(currentStatus);
+        }
+    }, [sensorData?.system_status, sensorData?.flameDetected, showNotification, lastSystemStatus]);
+
+    // Điều khiển thiết bị - VẪN alert khi user thao tác
     const handleControlDevice = async (device, action) => {
         try {
             await axios.post(`${API_BASE}/control-device`, {
@@ -81,16 +112,32 @@ function App() {
                 action
             });
 
-            // Hiển thị thông báo thành công
+            // HIỂN THỊ alert khi user thao tác thành công
             if (device === 'buzzer' && action === 'off') {
-                showNotification(ALERT_MESSAGES.BUZZER_OFF.message, ALERT_MESSAGES.BUZZER_OFF.type);
+                showNotification(
+                    ALERT_MESSAGES.BUZZER_OFF.message,
+                    ALERT_MESSAGES.BUZZER_OFF.type,
+                    '',
+                    ALERT_MESSAGES.BUZZER_OFF.duration
+                );
             } else if (device === 'pump' && action === 'off') {
-                showNotification(ALERT_MESSAGES.PUMP_OFF.message, ALERT_MESSAGES.PUMP_OFF.type);
+                showNotification(
+                    ALERT_MESSAGES.PUMP_OFF.message,
+                    ALERT_MESSAGES.PUMP_OFF.type,
+                    '',
+                    ALERT_MESSAGES.PUMP_OFF.duration
+                );
             } else if (device === 'system' && action === 'reboot') {
-                showNotification(ALERT_MESSAGES.SYSTEM_REBOOT.message, ALERT_MESSAGES.SYSTEM_REBOOT.type);
+                showNotification(
+                    ALERT_MESSAGES.SYSTEM_REBOOT.message,
+                    ALERT_MESSAGES.SYSTEM_REBOOT.type,
+                    '',
+                    ALERT_MESSAGES.SYSTEM_REBOOT.duration
+                );
             }
         } catch (error) {
-            showNotification('Lỗi khi gửi lệnh điều khiển', 'error');
+            // HIỂN THỊ alert khi có lỗi
+            showNotification('Lỗi khi gửi lệnh điều khiển', 'error', '', 5000);
         }
     };
 
@@ -227,7 +274,7 @@ function App() {
                                 <h3>BIỂU ĐỒ DỮ LIỆU</h3>
                                 <div className="chart-container">
                                     <div className="line-chart">
-                                        <div className="chart-title">Sensor Data History</div>
+                                        <div className="chart-title">Lịch sử dữ liệu cảm biến</div>
                                         <div className="chart-legend">
                                             <div className="legend-item">
                                                 <div className="legend-color temp-color"></div>
@@ -400,12 +447,25 @@ function App() {
                     </div>
                 </div>
             </main>
+
+            {/* Footer */}
+            <footer className="app-footer mt-3">
+                <div className="container-fluid">
+                    <div className="footer-content">
+                        <p className="mb-1"><strong>Hệ thống giám sát và phát hiện hỏa hoạn</strong> - Doãn Mạnh Đạt - B20DCCN170</p>
+                    </div>
+                </div>
+            </footer>
+
             {/* Notification */}
             {notification && (
                 <Notification
+                    key={notification.key}
                     message={notification.message}
                     type={notification.type}
-                    onClose={() => setNotification(null)}
+                    onClose={closeNotification}
+                    duration={notification.duration}
+                    title={notification.title}
                 />
             )}
         </div>

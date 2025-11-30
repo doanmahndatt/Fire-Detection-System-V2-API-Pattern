@@ -161,7 +161,7 @@ function App() {
     const getStatusText = (status) => {
         switch (status) {
             case 'danger': return 'BÁO ĐỘNG !';
-            case 'warning': return 'BÁO ĐỘNG !';
+            case 'warning': return 'CẢNH BÁO !';
             default: return 'BÌNH THƯỜNG';
         }
     };

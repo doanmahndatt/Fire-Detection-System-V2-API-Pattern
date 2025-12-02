@@ -48,8 +48,6 @@ mqttClient.on('message', (topic, message) => {
             // Bước 3: Lưu vào database
             dataController.saveSensorData(processedData);
 
-            console.log('✅ Processed Data:', processedData);
-
         } catch (error) {
             console.error('❌ Error processing MQTT message:', error);
         }

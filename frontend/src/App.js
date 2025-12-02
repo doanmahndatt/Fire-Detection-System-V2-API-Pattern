@@ -67,7 +67,11 @@ function App() {
     const fetchHistory = async () => {
         try {
             const response = await axios.get(`${API_BASE}/history`);
-            setHistoryData(response.data);
+            // Sắp xếp theo thời gian tăng dần cho biểu đồ
+            const sortedData = response.data.sort((a, b) =>
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
+            setHistoryData(sortedData.slice(-10)); // Lấy 10 điểm gần nhất
         } catch (error) {
             console.error('Error fetching history:', error);
         }
@@ -141,7 +145,17 @@ function App() {
         }
     };
 
-    // Format thời gian
+    // Format thời gian cho biểu đồ (hh:mm)
+    const formatChartTime = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+    };
+
+    // Format thời gian cho nhật ký
     const formatTime = (dateString) => {
         const date = new Date(dateString);
         return date.toLocaleString('vi-VN', {
@@ -161,7 +175,7 @@ function App() {
     const getStatusText = (status) => {
         switch (status) {
             case 'danger': return 'BÁO ĐỘNG !';
-            case 'warning': return 'CẢNH BÁO !';
+            case 'warning': return 'BÁO ĐỘNG !';
             default: return 'BÌNH THƯỜNG';
         }
     };
@@ -187,6 +201,28 @@ function App() {
         }
     };
 
+    // Tính toán giá trị cho biểu đồ
+    const getChartData = () => {
+        if (historyData.length === 0) return { temperatures: [], humidities: [], times: [] };
+
+        const temperatures = historyData.map(d => d.temperature);
+        const humidities = historyData.map(d => d.humidity);
+        const times = historyData.map(d => formatChartTime(d.timestamp));
+
+        return { temperatures, humidities, times };
+    };
+
+    // Tính min/max cho trục Y
+    const getYAxisRange = () => {
+        if (historyData.length === 0) return { min: 0, max: 100 };
+
+        const allValues = historyData.flatMap(d => [d.temperature, d.humidity]);
+        const min = Math.floor(Math.min(...allValues) / 10) * 10;
+        const max = Math.ceil(Math.max(...allValues) / 10) * 10;
+
+        return { min: Math.max(0, min - 10), max: Math.min(100, max + 10) };
+    };
+
     if (isLoading) {
         return (
             <div className="loading-container">
@@ -195,6 +231,9 @@ function App() {
             </div>
         );
     }
+
+    const chartData = getChartData();
+    const yAxisRange = getYAxisRange();
 
     return (
         <div className="app">
@@ -286,73 +325,201 @@ function App() {
                                             </div>
                                         </div>
                                         <div className="chart-area">
-                                            <svg className="line-chart-svg" viewBox="0 0 500 200" preserveAspectRatio="none">
-                                                {/* Grid lines */}
-                                                {[0, 25, 50, 75, 100].map((percent, index) => (
-                                                    <line
-                                                        key={`grid-${index}`}
-                                                        x1="0"
-                                                        y1={percent * 2}
-                                                        x2="500"
-                                                        y2={percent * 2}
-                                                        stroke="#e0e0e0"
-                                                        strokeWidth="1"
-                                                    />
-                                                ))}
+                                            <svg className="line-chart-svg" viewBox="0 0 600 300" preserveAspectRatio="none">
+                                                {/* Background grid */}
+                                                <defs>
+                                                    <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
+                                                        <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#e0e0e0" strokeWidth="1"/>
+                                                    </pattern>
+                                                </defs>
+
+                                                <rect width="100%" height="100%" fill="url(#grid)" opacity="0.5"/>
+
+                                                {/* Y Axis - Giá trị */}
+                                                <g className="y-axis">
+                                                    {[0, 20, 40, 60, 80, 100].map((value) => {
+                                                        const y = 300 - (value * 3); // Scale: 0-100 to 0-300
+                                                        return (
+                                                            <g key={`y-${value}`}>
+                                                                <line
+                                                                    x1="50"
+                                                                    y1={y}
+                                                                    x2="550"
+                                                                    y2={y}
+                                                                    stroke="#e0e0e0"
+                                                                    strokeWidth="1"
+                                                                    strokeDasharray="5,5"
+                                                                />
+                                                                <text
+                                                                    x="40"
+                                                                    y={y + 5}
+                                                                    textAnchor="end"
+                                                                    fill="#666"
+                                                                    fontSize="10"
+                                                                >
+                                                                    {value}
+                                                                </text>
+                                                            </g>
+                                                        );
+                                                    })}
+                                                    <text
+                                                        x="20"
+                                                        y="150"
+                                                        textAnchor="middle"
+                                                        fill="#666"
+                                                        fontSize="11"
+                                                        transform="rotate(-90, 20, 150)"
+                                                    >
+                                                        Giá trị
+                                                    </text>
+                                                </g>
+
+                                                {/* X Axis - Thời gian */}
+                                                <g className="x-axis">
+                                                    {chartData.times.map((time, index) => {
+                                                        const x = 50 + (index * 50); // 10 points, 50px spacing
+                                                        return (
+                                                            <g key={`x-${index}`} transform={`translate(${x}, 0)`}>
+                                                                <line
+                                                                    x1="0"
+                                                                    y1="250"
+                                                                    x2="0"
+                                                                    y2="260"
+                                                                    stroke="#666"
+                                                                    strokeWidth="1"
+                                                                />
+                                                                <text
+                                                                    x="0"
+                                                                    y="275"
+                                                                    textAnchor="middle"
+                                                                    fill="#666"
+                                                                    fontSize="10"
+                                                                >
+                                                                    {time}
+                                                                </text>
+                                                            </g>
+                                                        );
+                                                    })}
+                                                    <text
+                                                        x="300"
+                                                        y="295"
+                                                        textAnchor="middle"
+                                                        fill="#666"
+                                                        fontSize="11"
+                                                    >
+                                                        Thời gian (hh:mm)
+                                                    </text>
+                                                </g>
 
                                                 {/* Temperature Line */}
-                                                <polyline
-                                                    fill="none"
-                                                    stroke="#d32f2f"
-                                                    strokeWidth="3"
-                                                    points={historyData.slice(0, 7).map((data, index) => {
-                                                        const x = (index / 6) * 500;
-                                                        const y = 200 - (data.temperature * 2);
-                                                        return `${x},${y}`;
-                                                    }).join(' ')}
-                                                />
+                                                {chartData.temperatures.length > 1 && (
+                                                    <polyline
+                                                        fill="none"
+                                                        stroke="#d32f2f"
+                                                        strokeWidth="3"
+                                                        strokeLinejoin="round"
+                                                        strokeLinecap="round"
+                                                        points={chartData.temperatures.map((temp, index) => {
+                                                            const x = 50 + (index * 50);
+                                                            const y = 300 - (temp * 3); // Scale temperature
+                                                            return `${x},${y}`;
+                                                        }).join(' ')}
+                                                    />
+                                                )}
 
                                                 {/* Humidity Line */}
-                                                <polyline
-                                                    fill="none"
-                                                    stroke="#1976d2"
-                                                    strokeWidth="3"
-                                                    points={historyData.slice(0, 7).map((data, index) => {
-                                                        const x = (index / 6) * 500;
-                                                        const y = 200 - (data.humidity * 2);
-                                                        return `${x},${y}`;
-                                                    }).join(' ')}
-                                                />
+                                                {chartData.humidities.length > 1 && (
+                                                    <polyline
+                                                        fill="none"
+                                                        stroke="#1976d2"
+                                                        strokeWidth="3"
+                                                        strokeLinejoin="round"
+                                                        strokeLinecap="round"
+                                                        points={chartData.humidities.map((humidity, index) => {
+                                                            const x = 50 + (index * 50);
+                                                            const y = 300 - (humidity * 3); // Scale humidity
+                                                            return `${x},${y}`;
+                                                        }).join(' ')}
+                                                    />
+                                                )}
 
                                                 {/* Temperature Points */}
-                                                {historyData.slice(0, 7).map((data, index) => {
-                                                    const x = (index / 6) * 500;
-                                                    const y = 200 - (data.temperature * 2);
+                                                {chartData.temperatures.map((temp, index) => {
+                                                    const x = 50 + (index * 50);
+                                                    const y = 300 - (temp * 3);
                                                     return (
-                                                        <circle
-                                                            key={`temp-${index}`}
-                                                            cx={x}
-                                                            cy={y}
-                                                            r="4"
-                                                            fill="#d32f2f"
-                                                        />
+                                                        <g key={`temp-point-${index}`}>
+                                                            <circle
+                                                                cx={x}
+                                                                cy={y}
+                                                                r="5"
+                                                                fill="#d32f2f"
+                                                                stroke="white"
+                                                                strokeWidth="2"
+                                                            />
+                                                            <text
+                                                                x={x}
+                                                                y={y - 10}
+                                                                textAnchor="middle"
+                                                                fill="#d32f2f"
+                                                                fontSize="9"
+                                                                fontWeight="bold"
+                                                            >
+                                                                {temp.toFixed(1)}°C
+                                                            </text>
+                                                        </g>
                                                     );
                                                 })}
 
                                                 {/* Humidity Points */}
-                                                {historyData.slice(0, 7).map((data, index) => {
-                                                    const x = (index / 6) * 500;
-                                                    const y = 200 - (data.humidity * 2);
+                                                {chartData.humidities.map((humidity, index) => {
+                                                    const x = 50 + (index * 50);
+                                                    const y = 300 - (humidity * 3);
                                                     return (
-                                                        <circle
-                                                            key={`humi-${index}`}
-                                                            cx={x}
-                                                            cy={y}
-                                                            r="4"
-                                                            fill="#1976d2"
-                                                        />
+                                                        <g key={`humi-point-${index}`}>
+                                                            <circle
+                                                                cx={x}
+                                                                cy={y}
+                                                                r="5"
+                                                                fill="#1976d2"
+                                                                stroke="white"
+                                                                strokeWidth="2"
+                                                            />
+                                                            <text
+                                                                x={x}
+                                                                y={y - 10}
+                                                                textAnchor="middle"
+                                                                fill="#1976d2"
+                                                                fontSize="9"
+                                                                fontWeight="bold"
+                                                            >
+                                                                {humidity.toFixed(1)}%
+                                                            </text>
+                                                        </g>
                                                     );
                                                 })}
+
+                                                {/* Warning line at 50°C */}
+                                                <line
+                                                    x1="50"
+                                                    y1={300 - (50 * 3)}
+                                                    x2="550"
+                                                    y2={300 - (50 * 3)}
+                                                    stroke="#ff9800"
+                                                    strokeWidth="2"
+                                                    strokeDasharray="5,5"
+                                                />
+
+                                                {/* Danger line at 70°C */}
+                                                <line
+                                                    x1="50"
+                                                    y1={300 - (70 * 3)}
+                                                    x2="550"
+                                                    y2={300 - (70 * 3)}
+                                                    stroke="#f44336"
+                                                    strokeWidth="2"
+                                                    strokeDasharray="5,5"
+                                                />
                                             </svg>
                                         </div>
                                     </div>
@@ -376,7 +543,7 @@ function App() {
                                             </tr>
                                             </thead>
                                             <tbody>
-                                            {historyData.slice(0, 8).map((log, index) => (
+                                            {historyData.slice(-8).reverse().map((log, index) => (
                                                 <tr key={index}>
                                                     <td>
                                                         <div className="log-time">
